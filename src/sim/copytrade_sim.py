@@ -1,10 +1,15 @@
 import os
+import json
 import pandas as pd
-import numpy as np
 from dataclasses import dataclass
 from rich.console import Console
 
+from src.pricing.jupiter_prices import JupiterPriceClient
+
 console = Console()
+
+# Solana USDC mint (mainnet)
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 
 @dataclass
@@ -13,12 +18,25 @@ class SimConfig:
     copy_fraction: float = 0.10      # follower copies 10% of leader size
     fee_bps: float = 20.0            # 0.20% fee
     slippage_bps: float = 30.0       # 0.30% slippage
-    delay_seconds: int = 30          # execution delay
+    delay_seconds: int = 30          # execution delay (placeholder for now)
     min_trade: float = 0.01          # ignore dust trades
 
 
 def bps_to_mult(bps: float) -> float:
     return bps / 10_000.0
+
+
+def resolve_price_usd(mint: str, price_client: JupiterPriceClient) -> float | None:
+    """
+    Resolve a USD spot price for a mint.
+    - USDC hardcoded to 1.0
+    - otherwise Jupiter price (may be None)
+    """
+    if not mint:
+        return None
+    if mint == USDC_MINT:
+        return 1.0
+    return price_client.get_price(mint)
 
 
 def main():
@@ -46,16 +64,13 @@ def main():
     slip_mult = bps_to_mult(cfg.slippage_bps)
 
     cash = cfg.starting_cash
-    position = 0.0  # "token units" position placeholder
+    position = 0.0  # token units (simplified single-asset position for demo)
     equity_curve = []
 
-    # We don't have real prices here. We'll simulate a naive "impact" model:
-    # - treat each transfer as a "buy signal"
-    # - price proxy drifts randomly, just to produce an equity curve
-    rng = np.random.default_rng(42)
-    price = 1.0
+    price_client = JupiterPriceClient()
+    last_price = 1.0  # fallback for equity marking if needed
 
-    for i, row in leader.iterrows():
+    for _, row in leader.iterrows():
         t = row.get("block_time")
         mint = row.get("mint")
         leader_size = float(row.get("ui_amount", 0.0))
@@ -64,31 +79,63 @@ def main():
         if leader_size < cfg.min_trade:
             continue
 
-        # Follower trade size
+        # Resolve USD price (USDC fallback -> 1.0)
+        price = resolve_price_usd(mint, price_client)
+
+        # If price unavailable, skip (keeps results honest)
+        if price is None:
+            equity_curve.append(
+                {
+                    "t": t,
+                    "event": "skip_no_price",
+                    "mint": mint,
+                    "cash": cash,
+                    "position": position,
+                    "price": last_price,
+                    "equity": cash + position * last_price,
+                }
+            )
+            continue
+
+        last_price = price
+
+        # Follower trade size (token units)
         trade_size = leader_size * cfg.copy_fraction
 
-        # Apply slippage and fees as cost multipliers
-        trade_cost = trade_size * (1.0 + fee_mult + slip_mult)
+        # Apply slippage and fees as cost multipliers (token units)
+        trade_cost_tokens = trade_size * (1.0 + fee_mult + slip_mult)
 
-        # Only execute if we have cash
-        if trade_cost > cash:
-            # skip trade
+        # Convert cost to USD using price
+        trade_cost_usd = trade_cost_tokens * price
+
+        if trade_cost_usd > cash:
             equity_curve.append(
-                {"t": t, "event": "skip_insufficient_cash", "mint": mint, "cash": cash, "position": position, "price": price,
-                 "equity": cash + position * price}
+                {
+                    "t": t,
+                    "event": "skip_insufficient_cash",
+                    "mint": mint,
+                    "cash": cash,
+                    "position": position,
+                    "price": price,
+                    "equity": cash + position * price,
+                }
             )
             continue
 
         # Execute "buy"
-        cash -= trade_cost
+        cash -= trade_cost_usd
         position += trade_size
 
-        # Update price proxy (random walk)
-        price *= float(np.clip(1.0 + rng.normal(0, 0.01), 0.95, 1.05))
-
         equity_curve.append(
-            {"t": t, "event": "copy_buy", "mint": mint, "cash": cash, "position": position, "price": price,
-             "equity": cash + position * price}
+            {
+                "t": t,
+                "event": "copy_buy",
+                "mint": mint,
+                "cash": cash,
+                "position": position,
+                "price": price,
+                "equity": cash + position * price,
+            }
         )
 
     curve = pd.DataFrame(equity_curve)
@@ -107,6 +154,8 @@ def main():
         "max_drawdown_pct": float(max_drawdown * 100.0),
         "trades_executed": int((curve["event"] == "copy_buy").sum()),
         "trades_skipped": int((curve["event"] != "copy_buy").sum()),
+        "skipped_no_price": int((curve["event"] == "skip_no_price").sum()),
+        "skipped_insufficient_cash": int((curve["event"] == "skip_insufficient_cash").sum()),
         "copy_fraction": cfg.copy_fraction,
         "fee_bps": cfg.fee_bps,
         "slippage_bps": cfg.slippage_bps,
@@ -118,7 +167,6 @@ def main():
 
     curve.to_csv(out_curve, index=False)
 
-    import json
     with open(out_summary, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
