@@ -1,4 +1,3 @@
-```md
 # Onchain Trader Intelligence (Solana)
 
 A lightweight, end-to-end demo that watches Solana wallets in real time, extracts SPL token transfer signals, and runs a paper execution simulation using Jupiter spot prices.
