@@ -2,11 +2,6 @@
 
 A lightweight, end-to-end demo that watches Solana wallets in real time, extracts SPL token transfer signals, and runs a paper execution simulation using Jupiter spot prices.
 
-This repository is intentionally **demo-complete and bounded**:
-**watch → signal → paper trade → CSV outputs**.  
-
-No production trading.
-
 ---
 
 ## What this project does
