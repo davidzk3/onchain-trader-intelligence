@@ -178,9 +178,6 @@ For each transaction touching a watched wallet:
    - `large_transfer` ≥ 1 unit
    - otherwise `normal_transfer`
 
-This is **not alpha modeling**.  
-It is a clean demonstration of realtime on-chain signal generation.
-
 ---
 
 ## Paper execution logic (high level)
