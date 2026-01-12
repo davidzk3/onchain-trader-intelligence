@@ -31,6 +31,7 @@ class RpcClient:
                 last_err = e
                 console.print(f"[yellow]RPC attempt {attempt}/{self.max_retries} failed:[/yellow] {e}")
                 time.sleep(1.2 * attempt)
+
         raise RuntimeError(f"RPC failed after retries: {last_err}")
 
     def get_signatures_for_address(self, address: str, limit: int = 50) -> List[Dict[str, Any]]:
@@ -71,7 +72,7 @@ def save_json(path: str, obj: Any) -> None:
 def fetch_wallet_transactions(rpc_url: str, wallet: str, limit: int = 30) -> Dict[str, Any]:
     """
     Fetch recent tx signatures for a wallet and then pull full transaction details.
-    Saves raw results later; returns a dict you can store.
+    Returns a dict you can store.
     """
     client = RpcClient(rpc_url=rpc_url)
     sigs = client.get_signatures_for_address(wallet, limit=limit)
@@ -89,10 +90,9 @@ def fetch_wallet_transactions(rpc_url: str, wallet: str, limit: int = 30) -> Dic
         except Exception as e:
             console.print(f"[red]Failed tx {sig}[/red]: {e}")
 
-        # Gentle rate limiting
         time.sleep(0.15)
 
-    console.print("")  # newline
+    console.print("")
     return {
         "wallet": wallet,
         "limit": limit,
@@ -100,3 +100,12 @@ def fetch_wallet_transactions(rpc_url: str, wallet: str, limit: int = 30) -> Dic
         "tx_count": len(txs),
         "items": txs,
     }
+
+
+def fetch_tx_by_signature(rpc_url: str, signature: str) -> Optional[Dict[str, Any]]:
+    """
+    Convenience helper used by realtime/watch_wallet.
+    Returns the tx (jsonParsed) or None if not found.
+    """
+    client = RpcClient(rpc_url=rpc_url)
+    return client.get_transaction(signature)
