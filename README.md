@@ -4,7 +4,8 @@ A lightweight, end-to-end demo that watches Solana wallets in real time, extract
 
 This repository is intentionally **demo-complete and bounded**:
 **watch → signal → paper trade → CSV outputs**.  
-No production trading, no scope creep.
+
+No production trading.
 
 ---
 
@@ -136,7 +137,7 @@ PAPER_SELL_FRACTION=1.0
 
 ## Quickstart (recommended path)
 
-### Step 1 — Watch a single wallet
+### Step 1: Watch a single wallet
 To avoid excessive logs, watch only one wallet (example: C).
 
 ```
@@ -151,13 +152,13 @@ Captured events are written to:
 artifacts/realtime_signals.jsonl
 ```
 
-### Step 2 — Run paper execution
+### Step 2: Run paper execution
 
 ```
 python -m src.realtime.execute_signals
 ```
 
-### Step 3 — Review outputs
+### Step 3: Review outputs
 
 ```
 artifacts/paper_trades.csv
